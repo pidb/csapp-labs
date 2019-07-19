@@ -314,7 +314,6 @@ int howManyBits(int x) {
  *   Rating: 4
  */
 unsigned floatScale2(unsigned uf) {
-
   int exp_uf;
   int exp_uf_two;
   unsigned frac_mask = 0x7FFFFF;
