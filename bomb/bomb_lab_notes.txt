@@ -1,0 +1,105 @@
+CS:APP Bomb Lab
+
+Maor Shutman.
+
+
+Bomb lab notes
+______________
+
+Phase 1: 
+%rax is a pointer to input_strings.
+%rdi is a pointer to the answer string. 
+Find the length of the answer string using "print $eax" after the 2nd call to string_length.
+Just use x/52b $rdi to see all charecters.
+
+Answer:
+"Border relations with Canada have never been better."
+
+Phase 2:
+In order to run GDB with command line arguments use:
+linux> gdb --args bomb psol.txt
+
+The phase_2 function can be writen as:
+
+// sp in %rsp, p in %rbx and q in %rbp
+char *p = sp + 0x4;
+char *q = sp + 0x18;
+long val;
+
+while (p != q) {
+  val = *(p - 4);
+  val *= 2;
+  
+  if (val != *p) { 
+    expload_bomb(); 
+  } else { 
+    p += 4;
+  }           
+}
+
+Where initialy %rsp points to the 2nd input number.
+Thus for the sequence a0, a1,.., a5 we need  2 * a[i-1] = a[i] for i = 1,...,5.
+
+Answer:
+"1 2 4 8 16 32"
+
+Phase 3:
+%rsp+8 and %rsp+12 point to the 1st and 2nd input numbers. The first must be <= 7.
+Than, the value of the 2nd is determined by the jump due to the first. In the case
+of 7, the %eax register is compared to 0x147 and thus we need 327 for the 2nd number.
+
+Answer: 
+"7 327"
+
+Phase 4:
+The phase requires exactly two arguments.
+The 2nd argument needs to be 0. The 1st argument needs to be such that func4(x, 0, 14) returns 0,
+and must be < 14.
+
+int func4(int x, int y, int z) {
+  int val = z - y;
+  val += long(val) >> 31;
+  val >>= 1;
+  
+  int t = val + y;
+  if (t > y) {
+    z = t - 1;
+    val = 2 * func4(x, y, z);
+  } else if (t < y) {
+    z = t + 1;
+    val = 2 * func4(x, y, z) + 1;
+  } else { // t == y
+    return 0;
+  }
+  return val;
+}
+
+Answer:
+"1 0"
+
+Phase 5:
+The loop in the code indexes an array at 0x40246b0. This array contains characters 
+that should be collected to the stack beginning at $rsp+0x10.
+
+The result string is stored at $rsi:
+0x66, 0x6c, 0x79, 0x65, 0x72, 0x73.
+
+Thus, we need to insert a string such that following array elements are read:
+9, 15, 14, 5, 6, 7, or 9, f, e, 5, 6, 7 in hex.
+
+Looking at the ASCII table we can find chars that have these lower 4 bits:
+y, O, ^, 5, 6, 7
+
+Answer:
+"yO^567"
+
+Phase 6:
+The first part of the code requires to input a permutation of the numbers 
+1,..,6. Than each number is substructed from 7. These numbers are used to 
+collect pointers to nodes of a linked list. Each node stores an integer.
+Finally, the code checks that the nodes are ordered such that the stored integers 
+are in decreasing order.
+
+Answer:
+"4 3 2 1 6 5"
+
