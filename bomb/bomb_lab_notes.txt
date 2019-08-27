@@ -95,7 +95,7 @@ Answer:
 
 Phase 6:
 The first part of the code requires to input a permutation of the numbers 
-1,..,6. Than each number is substructed from 7. These numbers are used to 
+1,..,6. Then, each number is substructed from 7. These numbers are used to 
 collect pointers to nodes of a linked list. Each node stores an integer.
 Finally, the code checks that the nodes are ordered such that the stored integers 
 are in decreasing order.
