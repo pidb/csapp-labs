@@ -10,6 +10,7 @@
 #include <limits.h>
 
 #define ADDR_BITS 64
+#define MAX_NAME_LEN 1000
 
 #define TAG(addr, s, b) (addr >> (s + b))
 #define SET(addr, s, b) ((addr >> b) & ((uint64_t)(-1) >> (ADDR_BITS - s)))
@@ -24,7 +25,7 @@ typedef cache_line ** Cache;
 
 void parse_args(
     int argc, char *argv[],
-    int *s, int *E, char **t, int *b, bool *v)
+    int *s, int *E, char *t, int *b, bool *v)
 {
     int opt = 0;
     while ((opt = getopt(argc, argv, "s:E:t:b:v")) != -1) {
@@ -36,9 +37,7 @@ void parse_args(
             *E = atoi(optarg);
             break;
         case 't': 
-            *t = (char *) malloc(strlen(optarg) + 1);
-            if (!(*t)) { abort(); }
-            strcpy(*t, optarg);
+            strcpy(t, optarg);
             break;
         case 'b':
             *b = atoi(optarg);
@@ -207,9 +206,9 @@ int main(int argc, char *argv[])
 {
     int s = 0, E = 0, b = 0;
     bool v = false;
-    char *trace_path = NULL;
+    char trace_path[MAX_NAME_LEN];
 
-    parse_args(argc, argv, &s, &E, &trace_path, &b, &v);
+    parse_args(argc, argv, &s, &E, trace_path, &b, &v);
     int S = pow(2, s);
 
     Cache cache = init_cache(E, S);
@@ -219,7 +218,6 @@ int main(int argc, char *argv[])
 
     printSummary(hits, misses, evictions);
 
-    free(trace_path);
     free_cache(cache, S);
 
     return 0;
