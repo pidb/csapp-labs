@@ -1,39 +1,15 @@
-/*
- * mm.c - TODO
+/* 
+ * Simple, 32-bit and 64-bit clean allocator based on implicit free
+ * lists, first-fit placement, and boundary tag coalescing, as described
+ * in the CS:APP3e text. Blocks must be aligned to doubleword (8 byte) 
+ * boundaries. Minimum block size is 16 bytes. 
  */
 #include <stdio.h>
-#include <stdlib.h>
-#include <assert.h>
-#include <unistd.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "mm.h"
 #include "memlib.h"
-
-/*********************************************************
- * NOTE TO STUDENTS: Before you do anything else, please
- * provide your team information in the following struct.
- ********************************************************/
-team_t team = {
-    /* Team name */
-    "-",
-    /* First member's full name */
-    "Maor Shutman",
-    /* First member's email address */
-    "-",
-    /* Second member's full name (leave blank if none) */
-    "-",
-    /* Second member's email address (leave blank if none) */
-    "-"
-};
-
-/* single word (4) or double word (8) alignment */
-#define ALIGNMENT 8
-
-/* rounds up to the nearest multiple of ALIGNMENT */
-#define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~0x7)
-
-#define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
 /*
  * If NEXT_FIT defined use next fit search, else use first-fit search 
@@ -42,9 +18,9 @@ team_t team = {
 
 /* $begin mallocmacros */
 /* Basic constants and macros */
-#define WSIZE       4       /* Word and header/footer size (bytes) */
+#define WSIZE       4       /* Word and header/footer size (bytes) */ //line:vm:mm:beginconst
 #define DSIZE       8       /* Double word size (bytes) */
-#define CHUNKSIZE  (1<<12)  /* Extend heap by this amount (bytes) */
+#define CHUNKSIZE  (1<<12)  /* Extend heap by this amount (bytes) */  //line:vm:mm:endconst 
 
 #define MAX(x, y) ((x) > (y)? (x) : (y))  
 
@@ -52,20 +28,20 @@ team_t team = {
 #define PACK(size, alloc)  ((size) | (alloc)) //line:vm:mm:pack
 
 /* Read and write a word at address p */
-#define GET(p)       (*(unsigned int *)(p))
-#define PUT(p, val)  (*(unsigned int *)(p) = (val))
+#define GET(p)       (*(unsigned int *)(p))            //line:vm:mm:get
+#define PUT(p, val)  (*(unsigned int *)(p) = (val))    //line:vm:mm:put
 
 /* Read the size and allocated fields from address p */
-#define GET_SIZE(p)  (GET(p) & ~0x7)
-#define GET_ALLOC(p) (GET(p) & 0x1)
+#define GET_SIZE(p)  (GET(p) & ~0x7)                   //line:vm:mm:getsize
+#define GET_ALLOC(p) (GET(p) & 0x1)                    //line:vm:mm:getalloc
 
 /* Given block ptr bp, compute address of its header and footer */
-#define HDRP(bp)       ((char *)(bp) - WSIZE)
-#define FTRP(bp)       ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
+#define HDRP(bp)       ((char *)(bp) - WSIZE)                      //line:vm:mm:hdrp
+#define FTRP(bp)       ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE) //line:vm:mm:ftrp
 
 /* Given block ptr bp, compute address of next and previous blocks */
-#define NEXT_BLKP(bp)  ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))
-#define PREV_BLKP(bp)  ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
+#define NEXT_BLKP(bp)  ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE))) //line:vm:mm:nextblkp
+#define PREV_BLKP(bp)  ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE))) //line:vm:mm:prevblkp
 /* $end mallocmacros */
 
 /* Global variables */
@@ -90,13 +66,13 @@ static void checkblock(void *bp);
 int mm_init(void) 
 {
     /* Create the initial empty heap */
-    if ((heap_listp = mem_sbrk(4*WSIZE)) == (void *)-1)
+    if ((heap_listp = mem_sbrk(4*WSIZE)) == (void *)-1) //line:vm:mm:begininit
         return -1;
     PUT(heap_listp, 0);                          /* Alignment padding */
     PUT(heap_listp + (1*WSIZE), PACK(DSIZE, 1)); /* Prologue header */ 
     PUT(heap_listp + (2*WSIZE), PACK(DSIZE, 1)); /* Prologue footer */ 
     PUT(heap_listp + (3*WSIZE), PACK(0, 1));     /* Epilogue header */
-    heap_listp += (2*WSIZE);                     
+    heap_listp += (2*WSIZE);                     //line:vm:mm:endinit  
     /* $end mminit */
 
 #ifdef NEXT_FIT
@@ -131,22 +107,22 @@ void *mm_malloc(size_t size)
         return NULL;
 
     /* Adjust block size to include overhead and alignment reqs. */
-    if (size <= DSIZE)                                          
-        asize = 2*DSIZE;                                        
+    if (size <= DSIZE)                                          //line:vm:mm:sizeadjust1
+        asize = 2*DSIZE;                                        //line:vm:mm:sizeadjust2
     else
-        asize = DSIZE * ((size + (DSIZE) + (DSIZE-1)) / DSIZE); 
+        asize = DSIZE * ((size + (DSIZE) + (DSIZE-1)) / DSIZE); //line:vm:mm:sizeadjust3
 
     /* Search the free list for a fit */
-    if ((bp = find_fit(asize)) != NULL) {
-        place(bp, asize);                
+    if ((bp = find_fit(asize)) != NULL) {  //line:vm:mm:findfitcall
+        place(bp, asize);                  //line:vm:mm:findfitplace
         return bp;
     }
 
     /* No fit found. Get more memory and place the block */
-    extendsize = MAX(asize,CHUNKSIZE);
+    extendsize = MAX(asize,CHUNKSIZE);                 //line:vm:mm:growheap1
     if ((bp = extend_heap(extendsize/WSIZE)) == NULL)  
-        return NULL;
-    place(bp, asize);
+        return NULL;                                  //line:vm:mm:growheap2
+    place(bp, asize);                                 //line:vm:mm:growheap3
     return bp;
 } 
 /* $end mmmalloc */
@@ -280,17 +256,17 @@ static void *extend_heap(size_t words)
     size_t size;
 
     /* Allocate an even number of words to maintain alignment */
-    size = (words % 2) ? (words+1) * WSIZE : words * WSIZE;
+    size = (words % 2) ? (words+1) * WSIZE : words * WSIZE; //line:vm:mm:beginextend
     if ((long)(bp = mem_sbrk(size)) == -1)  
-        return NULL;
+        return NULL;                                        //line:vm:mm:endextend
 
     /* Initialize free block header/footer and the epilogue header */
-    PUT(HDRP(bp), PACK(size, 0));         /* Free block header */
-    PUT(FTRP(bp), PACK(size, 0));         /* Free block footer */
-    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1)); /* New epilogue header */
+    PUT(HDRP(bp), PACK(size, 0));         /* Free block header */   //line:vm:mm:freeblockhdr
+    PUT(FTRP(bp), PACK(size, 0));         /* Free block footer */   //line:vm:mm:freeblockftr
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1)); /* New epilogue header */ //line:vm:mm:newepihdr
 
     /* Coalesce if the previous block was free */
-    return coalesce(bp);
+    return coalesce(bp);                                          //line:vm:mm:returnblock
 }
 /* $end mmextendheap */
 
@@ -412,3 +388,4 @@ void checkheap(int verbose)
     if ((GET_SIZE(HDRP(bp)) != 0) || !(GET_ALLOC(HDRP(bp))))
         printf("Bad epilogue header\n");
 }
+
