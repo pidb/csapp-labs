@@ -118,6 +118,9 @@ int mm_init(void)
  */
 void *mm_malloc(size_t size) 
 {
+    // debug
+    printf("malloc size %d\n", size);
+
     size_t asize;      /* Adjusted block size */
     size_t extendsize; /* Amount to extend heap if no fit */
     char *bp;      
@@ -157,6 +160,9 @@ void *mm_malloc(size_t size)
  */
 void mm_free(void *bp)
 {
+    // debug
+    printf("free at %x\n", bp);
+
     if (bp == 0) 
         return;
 
@@ -201,7 +207,7 @@ void *mm_realloc(void *ptr, size_t size)
     /* Copy the old data. */
     oldsize = GET_SIZE(HDRP(ptr));
     if(size < oldsize) oldsize = size;
-    memcpy(newptr, ptr, oldsize);
+        memcpy(newptr, ptr, oldsize);
 
     /* Free the old block. */
     mm_free(ptr);
@@ -270,31 +276,41 @@ static void *extend_heap(size_t words)
  */
 static void place(void *bp, size_t asize)
 {
-    size_t csize = GET_SIZE(HDRP(bp));   
+    size_t csize = GET_SIZE(HDRP(bp));
+    char *pred = GET(PRED(bp));
+    char *succ = GET(SUCC(bp));
 
     if ((csize - asize) >= (2*DSIZE)) { 
-        char *pred = GET(PRED(bp));
-        char *succ = GET(SUCC(bp));
-
         PUT(HDRP(bp), PACK(asize, 1));
         PUT(FTRP(bp), PACK(asize, 1));
         bp = NEXT_BLKP(bp);
         PUT(HDRP(bp), PACK(csize-asize, 0));
         PUT(FTRP(bp), PACK(csize-asize, 0));
 
-        /* Fix explicit free list pointers */
+        /* Move the free list node to bp */
         if (pred) {
             PUT(SUCC(pred), bp);
             PUT(PRED(bp), pred);
+        } else {
+            /* bp was the root */
+            list_root = (char *)bp;
+            PUT(PRED(bp), NULL);
         }
+
         if (succ) {
             PUT(PRED(succ), bp);
             PUT(SUCC(bp), succ);
+        } else {
+            /* bp was the last node */
+            PUT(SUCC(bp), NULL);
         }
     }
-    else { 
+    else {
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
+
+        /* Delete the free list node at bp */
+        splice_node(bp, pred, succ);
     }
 }
 
@@ -304,13 +320,17 @@ static void place(void *bp, size_t asize)
 static void *find_fit(size_t asize)
 {
     /* First-fit search */
-    char *bp;
+    char *bp = list_root;
 
-    for (bp = list_root; GET(SUCC(bp)) != NULL; bp = GET(SUCC(bp))) {
+    // TODO: change to for loop ?
+    do {
+        printf("find_fit, alloc %d\n", GET_ALLOC(HDRP(bp)));
+        printf("find_fit, size %d\n", GET_SIZE(HDRP(bp)));
+
         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
             return (void *)bp;
-        }
-    }
+        }        
+    } while ((bp = GET(SUCC(bp))) != NULL);
 
     return NULL; /* No fit */
 }
@@ -352,12 +372,17 @@ static void *coalesce(void *bp)
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
     size_t size = GET_SIZE(HDRP(bp));
 
+    char *next_pred = GET(PRED(NEXT_BLKP(bp)));
+    char *next_succ = GET(SUCC(NEXT_BLKP(bp)));
+    char *prev_pred = GET(PRED(PREV_BLKP(bp)));
+    char *prev_succ = GET(SUCC(PREV_BLKP(bp)));
+
     if (prev_alloc && next_alloc) {            /* Case 1 */
         insert_root(bp);
     }
 
     else if (prev_alloc && !next_alloc) {      /* Case 2 */
-        splice_succ(bp);
+        splice_node(bp, next_pred, next_succ);
         insert_root(bp);
 
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
@@ -366,7 +391,8 @@ static void *coalesce(void *bp)
     }
 
     else if (!prev_alloc && next_alloc) {      /* Case 3 */
-        splice_pred(bp);
+        //splice_pred(bp);
+        splice_node(bp, prev_pred, prev_succ);
         insert_root(PREV_BLKP(bp));
 
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
@@ -376,8 +402,10 @@ static void *coalesce(void *bp)
     }
 
     else {                                     /* Case 4 */
-        splice_pred(bp);
-        splice_succ(bp);
+        // splice_pred(bp);
+        // splice_succ(bp);
+        splice_node(bp, next_pred, next_succ);
+        splice_node(bp, prev_pred, prev_succ);
         insert_root(PREV_BLKP(bp));
 
         size += GET_SIZE(HDRP(PREV_BLKP(bp))) + 
@@ -390,51 +418,26 @@ static void *coalesce(void *bp)
     return bp;
 }
 
-void splice_succ(void *bp)
+void splice_node(void *bp, char *pred, char *succ)
 {
-    char *next_pred = GET(PRED(NEXT_BLKP(bp)));
-    char *next_succ = GET(SUCC(NEXT_BLKP(bp)));
+    // TODO: don't need bp ? 
 
-    if (next_pred && next_succ) {
-        PUT(SUCC(next_pred), next_succ);
-        PUT(PRED(next_succ), next_pred);
+    if (pred && succ) {
+        PUT(SUCC(pred), succ);
+        PUT(PRED(succ), pred);
     }
-    else if (!next_pred && next_succ) {
+    else if (!pred && succ) {
         /* Delete root */
-        list_root = next_succ;
+        list_root = succ;
         PUT(PRED(list_root), NULL);
     }
-    else if (next_pred && !next_succ) {
+    else if (pred && !succ) {
         /* Delete last node */
-        PUT(SUCC(next_pred), NULL);
+        PUT(SUCC(pred), NULL);
     }
-    else /* (!next_pred && !next_succ) */ {
+    else /* (!pred && !next_succ) */ {
         /* Delete last node */
         list_root = NULL; 
-    }
-}
-
-void splice_pred(void *bp)
-{
-    char *prev_pred = GET(PRED(PREV_BLKP(bp)));
-    char *prev_succ = GET(SUCC(PREV_BLKP(bp)));
-
-    if (prev_pred && prev_succ) {
-        PUT(SUCC(prev_pred), prev_succ);
-        PUT(PRED(prev_succ), prev_pred);
-    }
-    else if (!prev_pred && prev_succ) {
-        /* Delete root */
-        list_root = prev_succ;
-        PUT(PRED(list_root), NULL);
-    }
-    else if (prev_pred && !prev_succ) {
-        /* Delete last node */
-        PUT(SUCC(prev_pred), NULL);
-    }
-    else /* (!next_pred && !next_succ) */ {
-        /* Delete last node */
-        list_root = NULL;
     }
 }
 
