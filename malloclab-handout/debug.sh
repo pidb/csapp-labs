@@ -7,4 +7,5 @@ gdb \
 	-ex 'break mm.c:place'       \
 	-ex 'break mm.c:mm_malloc'   \
 	-ex 'break mm.c:mm_free'     \
+	-ex 'break mm.c:extend_heap' \
 	--args ./mdriver -f traces/short1-bal.rep

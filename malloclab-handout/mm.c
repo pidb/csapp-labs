@@ -372,27 +372,21 @@ static void *coalesce(void *bp)
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
     size_t size = GET_SIZE(HDRP(bp));
 
-    char *next_pred = GET(PRED(NEXT_BLKP(bp)));
-    char *next_succ = GET(SUCC(NEXT_BLKP(bp)));
-    char *prev_pred = GET(PRED(PREV_BLKP(bp)));
-    char *prev_succ = GET(SUCC(PREV_BLKP(bp)));
-
     if (prev_alloc && next_alloc) {            /* Case 1 */
         insert_root(bp);
     }
 
     else if (prev_alloc && !next_alloc) {      /* Case 2 */
-        splice_node(bp, next_pred, next_succ);
+        splice_node(NEXT_BLKP(bp));
         insert_root(bp);
 
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT(HDRP(bp), PACK(size, 0));
-        PUT(FTRP(bp), PACK(size,0));
+        PUT(FTRP(bp), PACK(size, 0));
     }
 
     else if (!prev_alloc && next_alloc) {      /* Case 3 */
-        //splice_pred(bp);
-        splice_node(bp, prev_pred, prev_succ);
+        splice_node(PREV_BLKP(bp));
         insert_root(PREV_BLKP(bp));
 
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
@@ -402,10 +396,9 @@ static void *coalesce(void *bp)
     }
 
     else {                                     /* Case 4 */
-        // splice_pred(bp);
-        // splice_succ(bp);
-        splice_node(bp, next_pred, next_succ);
-        splice_node(bp, prev_pred, prev_succ);
+        splice_node(NEXT_BLKP(bp));
+        splice_node(PREV_BLKP(bp));
+        
         insert_root(PREV_BLKP(bp));
 
         size += GET_SIZE(HDRP(PREV_BLKP(bp))) + 
@@ -418,31 +411,36 @@ static void *coalesce(void *bp)
     return bp;
 }
 
-void splice_node(void *bp, char *pred, char *succ)
+void splice_node(void *bp) //, char *pred, char *succ)
 {
-    // TODO: don't need bp ? 
+    char *pred_bp = GET(PRED(bp));
+    char *succ_bp = GET(SUCC(bp));
 
-    if (pred && succ) {
-        PUT(SUCC(pred), succ);
-        PUT(PRED(succ), pred);
+    if (pred_bp && succ_bp) {
+        PUT(SUCC(pred_bp), succ_bp);
+        PUT(PRED(succ_bp), pred_bp);
     }
-    else if (!pred && succ) {
+    else if (!pred_bp && succ_bp) {
         /* Delete root */
-        list_root = succ;
+        list_root = succ_bp;
         PUT(PRED(list_root), NULL);
     }
-    else if (pred && !succ) {
+    else if (pred_bp && !succ_bp) {
         /* Delete last node */
-        PUT(SUCC(pred), NULL);
+        PUT(SUCC(pred_bp), NULL);
     }
-    else /* (!pred && !next_succ) */ {
+    else /* (!pred_bp && !next_succ) */ {
         /* Delete last node */
-        list_root = NULL; 
+        list_root = NULL;
     }
 }
 
 void insert_root(char *new_root)
 {
+    if (new_root == list_root) {
+        return;
+    }
+
     char *tmp_root = list_root;
     list_root = (char *)new_root;
 
