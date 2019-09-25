@@ -103,9 +103,6 @@ int mm_init(void)
     PUT(heap_listp + (3*WSIZE), PACK(0, 1));     /* Epilogue header */
     heap_listp += (2*WSIZE);
 
-    /* Init the root of the explicit free list */
-    //list_root = heap_listp + DSIZE;
-
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     if (extend_heap(CHUNKSIZE/WSIZE) == NULL) 
         return -1;
@@ -118,8 +115,7 @@ int mm_init(void)
  */
 void *mm_malloc(size_t size) 
 {
-    // debug
-    printf("malloc size %d\n", size);
+    // printf("malloc size %d\n", size);
 
     size_t asize;      /* Adjusted block size */
     size_t extendsize; /* Amount to extend heap if no fit */
@@ -160,8 +156,7 @@ void *mm_malloc(size_t size)
  */
 void mm_free(void *bp)
 {
-    // debug
-    printf("free at %x\n", bp);
+    //printf("free at %x\n", bp);
 
     if (bp == 0) 
         return;
@@ -322,10 +317,12 @@ static void *find_fit(size_t asize)
     /* First-fit search */
     char *bp = list_root;
 
-    // TODO: change to for loop ?
+    if (!list_root)
+        return NULL;
+
     do {
-        printf("find_fit, alloc %d\n", GET_ALLOC(HDRP(bp)));
-        printf("find_fit, size %d\n", GET_SIZE(HDRP(bp)));
+        // printf("find_fit, alloc %d\n", GET_ALLOC(HDRP(bp)));
+        // printf("find_fit, size %d\n", GET_SIZE(HDRP(bp)));
 
         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
             return (void *)bp;
@@ -398,7 +395,6 @@ static void *coalesce(void *bp)
     else {                                     /* Case 4 */
         splice_node(NEXT_BLKP(bp));
         splice_node(PREV_BLKP(bp));
-        
         insert_root(PREV_BLKP(bp));
 
         size += GET_SIZE(HDRP(PREV_BLKP(bp))) + 
