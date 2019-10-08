@@ -1,6 +1,6 @@
 /*
  * mm.c - Segragated fits allocator.
- * Perf index = 47 (util) + 40 (thru) = 87/100.
+ * Perf index = 49 (util) + 40 (thru) = 89/100.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,7 +45,7 @@ team_t team = {
 /* Basic constants and macros */
 #define WSIZE       4       /* Word and header/footer size (bytes) */
 #define DSIZE       8       /* Double word size (bytes) */
-#define CHUNKSIZE  (1<<14)  /* Extend heap by this amount (bytes) */
+#define CHUNKSIZE  (1<<9)  /* Extend heap by this amount (bytes) */
 
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
@@ -265,18 +265,6 @@ void *mm_realloc(void *ptr, size_t size)
                 place_realloc(prev, asize, prev_size+csize);
                 return prev;
             }
-        }
-
-        if (!prev_alloc && !next_alloc) {
-            prev_size = GET_SIZE(HDRP(prev));
-            next_size = GET_SIZE(HDRP(next));
-            if ((prev_size + next_size + csize) > asize) {    
-                size_t oldsize = GET_SIZE(HDRP(ptr)) - DSIZE;
-                splice_node(prev);
-                memmove(prev, ptr, oldsize);
-                place_realloc(prev, asize, prev_size + next_size + csize);
-                return prev;
-            }   
         }
     }
 
@@ -667,7 +655,7 @@ char **get_root(int size) {
 
 char **next_list(char **list_root) {
     int diff = (int)(heap_listp - (char *)list_root);
-    if (diff == 8) {
+    if (diff == DSIZE) {
         return NULL; /* list_root alredy points to the largest class */
     } else {
         return (char **)((char *)list_root + WSIZE);
