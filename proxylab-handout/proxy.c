@@ -9,7 +9,8 @@
 /* You won't lose style points for including this long line in your code */
 static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 Firefox/10.0.3\r\n";
 
-void doit(int fd);
+//void doit(int fd);
+void *thread_handle_req(void *vargp);
 void read_requesthdrs(rio_t *rp);
 
 void parse_uri(char *uri, char *hostname, char *port, char *query);
@@ -24,10 +25,12 @@ int main(int argc, char **argv)
 {
     printf("%s\n", user_agent_hdr);
 
-    int listenfd, connfd;
+    int listenfd;
+    int *connfdp;
     char hostname[MAXLINE], port[MAXLINE];
     socklen_t clientlen;
     struct sockaddr_storage clientaddr;
+    pthread_t tid;
 
     /* Check command line args */
     if (argc != 2) {
@@ -38,24 +41,32 @@ int main(int argc, char **argv)
     listenfd = Open_listenfd(argv[1]);
     while (1) {
         clientlen = sizeof(clientaddr);
-        connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);
+        
+        connfdp = Malloc(sizeof(int));    
+        *connfdp = Accept(listenfd, (SA *)&clientaddr, &clientlen);
 
         // DEBUG
-        printf("Made a connection with fd %d\n", connfd);
+        printf("Made a connection with fd %d\n", *connfdp);
 
         Getnameinfo((SA *) &clientaddr, clientlen, hostname, MAXLINE, 
             port, MAXLINE, 0);
+
         printf("Accepted connection from (%s, %s)\n", hostname, port);
-        doit(connfd);
-        Close(connfd);
+        Pthread_create(&tid, NULL, thread_handle_req, connfdp);
     }
 }
 
 /*
- * doit - handle one HTTP request/response transaction
+ * thread_handle_req - 
  */
-void doit(int fd)
+void *thread_handle_req(void *vargp)
 {
+    int fd = *((int *)vargp);
+    Pthread_detach(pthread_self());
+    Free(vargp);
+
+    //printf("file desc : %d\n", fd);
+
     int is_static;
     struct stat sbuf;
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
@@ -72,9 +83,6 @@ void doit(int fd)
 
     sscanf(buf, "%s %s %s", method, uri, version);       
     if (strcasecmp(method, "GET")) {
-        // TODO: how to handle this ?                 
-        // clienterror(fd, method, "501", "Not Implemented",
-        //             "Only GET is implemented");
         return;
     }
     read_requesthdrs(&rio);
@@ -117,6 +125,9 @@ void doit(int fd)
     printf("Length: %d\n", n);
 
     Rio_writen(fd, response_buf, n);
+
+    Close(fd);
+    return NULL;
 }
 
 /*
@@ -167,7 +178,6 @@ void build_request(char *req, char *host, char *query)
     char buf[MAXBUF];
 
     sprintf(buf, "GET %s HTTP/1.0\r\n", query);
-
     sprintf(buf, "%sHost: %s\r\n", buf, host);
     sprintf(buf, "%sUser-Agent: %s", buf, user_agent_hdr);
     sprintf(buf, "%sConnection: close\r\n", buf);
@@ -175,7 +185,6 @@ void build_request(char *req, char *host, char *query)
     sprintf(buf, "%s\r\n", buf);
     
     strcpy(req, buf);
-
     printf("Request:\n%s\n", buf);
 }
 
