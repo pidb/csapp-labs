@@ -4,17 +4,20 @@
 /* Recommended max cache and object sizes */
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
+#define DEFAULT_PORT "80"
 
 /* You won't lose style points for including this long line in your code */
 static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 Firefox/10.0.3\r\n";
 
 void doit(int fd);
 void read_requesthdrs(rio_t *rp);
-int parse_uri(char *uri, char *filename, char *cgiargs);
+
+void parse_uri(char *uri, char *hostname, char *port, char *query);
+void build_request(char *req, char *host, char *query);
+
 void serve_static(int fd, char *filename, int filesize);
-void get_filetype(char *filename, char *filetype);
 void serve_dynamic(int fd, char *filename, char *cgiargs);
-void clienterror(int fd, char *cause, char *errnum, 
+void clienterror(int fd, char *cause, char *errnum,
          char *shortmsg, char *longmsg);
 
 int main(int argc, char **argv)
@@ -60,8 +63,6 @@ void doit(int fd)
     rio_t rio;
 
     /* Read request line and headers */
-
-    // FIXME: The \r\n is absent.
     Rio_readinitb(&rio, fd);
     if (!Rio_readlineb(&rio, buf, MAXLINE))
         return;
@@ -70,20 +71,24 @@ void doit(int fd)
     printf("buff: %s len = %d \n", buf, strlen(buf));
 
     sscanf(buf, "%s %s %s", method, uri, version);       
-    if (strcasecmp(method, "GET")) {                     
-        clienterror(fd, method, "501", "Not Implemented",
-                    "Tiny does not implement this method");
+    if (strcasecmp(method, "GET")) {
+        // TODO: how to handle this ?                 
+        // clienterror(fd, method, "501", "Not Implemented",
+        //             "Only GET is implemented");
         return;
     }
     read_requesthdrs(&rio);
 
     /* Parse URI from GET request */
-    is_static = parse_uri(uri, filename, cgiargs);
+    char host[MAXLINE], query[MAXLINE];
+    char port[MAXLINE];
+    parse_uri(uri, host, port, query);
 
-    // Open a connction to the server.
-    // TODO: need to parse the request correctly for the port and host.
+    // GET http://localhost:8550/ HTTP/1.1
+    // GET http://www.example.com/ HTTP/1.0
+
     int clientfd;
-    if ((clientfd = open_clientfd("localhost", "8550")) < 0) {
+    if ((clientfd = open_clientfd(host, port)) < 0) {
         // TODO: need to handle this error properly.
         unix_error("Open_clientfd error");
     }
@@ -92,154 +97,92 @@ void doit(int fd)
     printf("clientfd %d\n", clientfd);
 
     /* Send request to server. */
-    strcat(buf, "\r\n");
+    char req[MAXLINE];
+    build_request(req, host, query);
+    Rio_writen(clientfd, req, strlen(req));
 
-    Rio_writen(clientfd, buf, strlen(buf));
-
-    /* Serve the client. */
     rio_t response_rio;
     ssize_t n;
     char response_buf[MAX_OBJECT_SIZE];
     Rio_readinitb(&response_rio, clientfd);
-    
-    if ((n = rio_readlineb(&response_rio, response_buf, MAX_OBJECT_SIZE)) < 0) {
-        // FIXME: Handle error.
+
+    if ((n = rio_readn(clientfd, response_buf, MAX_OBJECT_SIZE)) < 0) {
         unix_error("Rio_readlineb error");
     }
     
     Close(clientfd);
+    
+    // DEBUG
+    printf("Response: %s\n", response_buf);
+    printf("Length: %d\n", n);
 
-    //printf("Server responded with %d bytes.\n", (int)n);
-    printf("%s\n", response_rio.rio_buf);
-
-    Rio_writen(fd, response_rio.rio_buf, n);
+    Rio_writen(fd, response_buf, n);
 }
 
 /*
  * read_requesthdrs - read HTTP request headers
  */
-/* $begin read_requesthdrs */
 void read_requesthdrs(rio_t *rp)
 {
     char buf[MAXLINE];
 
     Rio_readlineb(rp, buf, MAXLINE);
     printf("%s", buf);
-    while(strcmp(buf, "\r\n")) {          //line:netp:readhdrs:checkterm
+    while(strcmp(buf, "\r\n")) {
        Rio_readlineb(rp, buf, MAXLINE);
        printf("%s", buf);
     }
     return;
 }
-/* $end read_requesthdrs */
 
 /*
- * parse_uri - parse URI into filename and CGI args
- *             return 0 if dynamic content, 1 if static
+ * parse_uri
  */
-/* $begin parse_uri */
-int parse_uri(char *uri, char *filename, char *cgiargs) 
+void parse_uri(char *uri, char *host, char *port, char *query)
 {
-    char *ptr;
+    char host_port[MAXLINE];
 
-    if (!strstr(uri, "cgi-bin")) {  /* Static content */ //line:netp:parseuri:isstatic
-        strcpy(cgiargs, "");                             //line:netp:parseuri:clearcgi
-        strcpy(filename, ".");                           //line:netp:parseuri:beginconvert1
-        strcat(filename, uri);                           //line:netp:parseuri:endconvert1
-        if (uri[strlen(uri)-1] == '/')                   //line:netp:parseuri:slashcheck
-            strcat(filename, "home.html");               //line:netp:parseuri:appenddefault
-        return 1;
+    // FIXME: Is this general enough ?
+    sscanf(uri, "http://%[^/]%s", host_port, query);
+    
+    printf("hostname: %s, query: %s \n", host_port, query);
+    
+    /* Scan non-default port if exists. */
+    if (strchr(host_port, ':')) {
+        sscanf(host_port, "%[^:]:%s", host, port);
+    } else {
+        strcpy(port, DEFAULT_PORT);
+        strcpy(host, host_port);
     }
-    else {  /* Dynamic content */                        //line:netp:parseuri:isdynamic
-        ptr = index(uri, '?');                           //line:netp:parseuri:beginextract
-        if (ptr) {
-            strcpy(cgiargs, ptr+1);
-            *ptr = '\0';
-        }
-        else 
-            strcpy(cgiargs, "");                         //line:netp:parseuri:endextract
-        strcpy(filename, ".");                           //line:netp:parseuri:beginconvert2
-        strcat(filename, uri);                           //line:netp:parseuri:endconvert2
-        return 0;
-    }
+    
+    printf("hname: %s, port: %s\n", host, port);
+    
+    //http://www.cmu.edu:8080/hub/index.html
+    //GET http://www.cmu.edu:8080/hub/index.html HTTP1.1
+    //GET http://www.cmu.edu/hub/index.html HTTP1.1
 }
-/* $end parse_uri */
 
-/*
- * serve_static - copy a file back to the client 
- */
-/* $begin serve_static */
-void serve_static(int fd, char *filename, int filesize) 
+void build_request(char *req, char *host, char *query)
 {
-    int srcfd;
-    char *srcp, filetype[MAXLINE], buf[MAXBUF];
- 
-    /* Send response headers to client */
-    get_filetype(filename, filetype);       //line:netp:servestatic:getfiletype
-    sprintf(buf, "HTTP/1.0 200 OK\r\n");    //line:netp:servestatic:beginserve
-    sprintf(buf, "%sServer: Tiny Web Server\r\n", buf);
+    char buf[MAXBUF];
+
+    sprintf(buf, "GET %s HTTP/1.0\r\n", query);
+
+    sprintf(buf, "%sHost: %s\r\n", buf, host);
+    sprintf(buf, "%sUser-Agent: %s", buf, user_agent_hdr);
     sprintf(buf, "%sConnection: close\r\n", buf);
-    sprintf(buf, "%sContent-length: %d\r\n", buf, filesize);
-    sprintf(buf, "%sContent-type: %s\r\n\r\n", buf, filetype);
-    Rio_writen(fd, buf, strlen(buf));       //line:netp:servestatic:endserve
-    printf("Response headers:\n");
-    printf("%s", buf);
+    sprintf(buf, "%sProxy-Connection: close\r\n", buf);
+    sprintf(buf, "%s\r\n", buf);
+    
+    strcpy(req, buf);
 
-    /* Send response body to client */
-    srcfd = Open(filename, O_RDONLY, 0);    //line:netp:servestatic:open
-    srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);//line:netp:servestatic:mmap
-    Close(srcfd);                           //line:netp:servestatic:close
-    Rio_writen(fd, srcp, filesize);         //line:netp:servestatic:write
-    Munmap(srcp, filesize);                 //line:netp:servestatic:munmap
+    printf("Request:\n%s\n", buf);
 }
-
-/*
- * get_filetype - derive file type from file name
- */
-void get_filetype(char *filename, char *filetype) 
-{
-    if (strstr(filename, ".html"))
-        strcpy(filetype, "text/html");
-    else if (strstr(filename, ".gif"))
-        strcpy(filetype, "image/gif");
-    else if (strstr(filename, ".png"))
-        strcpy(filetype, "image/png");
-    else if (strstr(filename, ".jpg"))
-        strcpy(filetype, "image/jpeg");
-    else
-        strcpy(filetype, "text/plain");
-}  
-/* $end serve_static */
-
-/*
- * serve_dynamic - run a CGI program on behalf of the client
- */
-/* $begin serve_dynamic */
-void serve_dynamic(int fd, char *filename, char *cgiargs) 
-{
-    char buf[MAXLINE], *emptylist[] = { NULL };
-
-    /* Return first part of HTTP response */
-    sprintf(buf, "HTTP/1.0 200 OK\r\n"); 
-    Rio_writen(fd, buf, strlen(buf));
-    sprintf(buf, "Server: Tiny Web Server\r\n");
-    Rio_writen(fd, buf, strlen(buf));
-  
-    if (Fork() == 0) { /* Child */ //line:netp:servedynamic:fork
-        /* Real server would set all CGI vars here */
-        setenv("QUERY_STRING", cgiargs, 1); //line:netp:servedynamic:setenv
-        Dup2(fd, STDOUT_FILENO);         /* Redirect stdout to client */ //line:netp:servedynamic:dup2
-        Execve(filename, emptylist, environ); /* Run CGI program */ //line:netp:servedynamic:execve
-    }
-    Wait(NULL); /* Parent waits for and reaps child */ //line:netp:servedynamic:wait
-}
-/* $end serve_dynamic */
 
 /*
  * clienterror - returns an error message to the client
  */
-/* $begin clienterror */
-void clienterror(int fd, char *cause, char *errnum, 
+void clienterror(int fd, char *cause, char *errnum,
          char *shortmsg, char *longmsg) 
 {
     char buf[MAXLINE], body[MAXBUF];
@@ -260,4 +203,3 @@ void clienterror(int fd, char *cause, char *errnum,
     Rio_writen(fd, buf, strlen(buf));
     Rio_writen(fd, body, strlen(body));
 }
-/* $end clienterror */
