@@ -1,5 +1,9 @@
 #include <stdio.h>
 #include "csapp.h"
+#include "cache.h"
+
+// gcc -g proxy.c csapp.o item.c set.c cache.c -o proxy -lpthread
+// gdb -ex 'b cache.c:75' --args ./proxy 9000
 
 /* Recommended max cache and object sizes */
 #define MAX_CACHE_SIZE 1049000
@@ -21,6 +25,11 @@ void serve_dynamic(int fd, char *filename, char *cgiargs);
 void clienterror(int fd, char *cause, char *errnum,
          char *shortmsg, char *longmsg);
 
+typedef struct thread_args {
+    int fd;
+    Cache *cachep;
+} Thargs;
+
 int main(int argc, char **argv)
 {
     printf("%s\n", user_agent_hdr);
@@ -31,6 +40,9 @@ int main(int argc, char **argv)
     socklen_t clientlen;
     struct sockaddr_storage clientaddr;
     pthread_t tid;
+    Thargs *vargp;
+
+    Cache *cachep = init_cache();
 
     /* Check command line args */
     if (argc != 2) {
@@ -52,7 +64,11 @@ int main(int argc, char **argv)
             port, MAXLINE, 0);
 
         printf("Accepted connection from (%s, %s)\n", hostname, port);
-        Pthread_create(&tid, NULL, thread_handle_req, connfdp);
+
+        vargp = Malloc(sizeof(Thargs));
+        vargp->fd = *connfdp;
+        vargp->cachep = cachep;
+        Pthread_create(&tid, NULL, thread_handle_req, vargp);
     }
 }
 
@@ -61,11 +77,15 @@ int main(int argc, char **argv)
  */
 void *thread_handle_req(void *vargp)
 {
-    int fd = *((int *)vargp);
+    Thargs *vars = (Thargs *)vargp;
+
+    int fd = vars->fd;
+    Cache *cachep = vars->cachep;
+
     Pthread_detach(pthread_self());
     Free(vargp);
 
-    //printf("file desc : %d\n", fd);
+    printf("file desc : %d\n", fd);
 
     int is_static;
     struct stat sbuf;
@@ -88,41 +108,45 @@ void *thread_handle_req(void *vargp)
     read_requesthdrs(&rio);
 
     /* Parse URI from GET request */
-    char host[MAXLINE], query[MAXLINE];
-    char port[MAXLINE];
+    char host[MAXLINE], port[MAXLINE], query[MAXLINE];
     parse_uri(uri, host, port, query);
-
-    // GET http://localhost:8550/ HTTP/1.1
-    // GET http://www.example.com/ HTTP/1.0
 
     int clientfd;
     if ((clientfd = open_clientfd(host, port)) < 0) {
-        // TODO: need to handle this error properly.
-        unix_error("Open_clientfd error");
+        return;
     }
-
     // DEBUG
     printf("clientfd %d\n", clientfd);
 
-    /* Send request to server. */
-    char req[MAXLINE];
-    build_request(req, host, query);
-    Rio_writen(clientfd, req, strlen(req));
-
-    rio_t response_rio;
     ssize_t n;
     char response_buf[MAX_OBJECT_SIZE];
-    Rio_readinitb(&response_rio, clientfd);
 
-    if ((n = rio_readn(clientfd, response_buf, MAX_OBJECT_SIZE)) < 0) {
-        unix_error("Rio_readlineb error");
+    /* Check for the uri in the cache. */
+    Item itm;
+    if (is_null(itm = cache_get_item(cachep, uri))) {
+        char req[MAXLINE];
+        build_request(req, host, query);
+        Rio_writen(clientfd, req, strlen(req));
+
+        rio_t response_rio;
+        Rio_readinitb(&response_rio, clientfd);
+        
+        if ((n = rio_readn(clientfd, response_buf, MAX_OBJECT_SIZE)) < 0) {
+            unix_error("Rio_readlineb error");
+        }
+
+        cache_writer(cachep, response_buf, uri, n);
+        // DEBUG
+        printf("----------> cache tot size = %d\n", cachep->tot_size);
+    } else {
+        // Use cache_reader.
     }
     
     Close(clientfd);
     
     // DEBUG
-    printf("Response: %s\n", response_buf);
-    printf("Length: %d\n", n);
+    //printf("Response: %s\n", response_buf);
+    printf("Response length: %d\n", n);
 
     Rio_writen(fd, response_buf, n);
 
@@ -167,10 +191,6 @@ void parse_uri(char *uri, char *host, char *port, char *query)
     }
     
     printf("hname: %s, port: %s\n", host, port);
-    
-    //http://www.cmu.edu:8080/hub/index.html
-    //GET http://www.cmu.edu:8080/hub/index.html HTTP1.1
-    //GET http://www.cmu.edu/hub/index.html HTTP1.1
 }
 
 void build_request(char *req, char *host, char *query)
