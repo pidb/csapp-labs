@@ -53,6 +53,7 @@ void cache_writer(Cache *cachep, char *data, char *name, ssize_t size)
 
 Item cache_get_item(Cache *cache, Key key)
 {
+    printf("Searching item \n");
     return STsearch(key);
 }
 
@@ -60,21 +61,24 @@ void cache_store(Cache *cachep, char *data, char *name, ssize_t size)
 {
     Item item;
 
+    if ((cachep->tot_size + size) > MAX_CACHE_SIZE) {
+        printf("Reached max size !!!!!!!!!!!!!!!!!!! \n");
+        return;
+    }
+
     printf("----------> cached uri = %s, %d\n", name, strlen(name));
 
     strncpy(item.name, name, strlen(name));
+    
     item.size = size;
+    
+    item.data = (char *)Malloc(size);
+    memcpy(item.data, data, size);
 
-    // item.data = (char *)Malloc(size);
-    // memcpy(item.data, data, size);
-
-    printf("coppied data \n");
+    printf("coppied data, %d bytes \n", size);
     printf("struct size, %d \n", sizeof(Item));
 
-    //STinsert(item);
-    test_item(item);
-
-    //printf("%s\n", head->item->name);
+    STinsert(item);
 
     cachep->tot_size += size;
 }

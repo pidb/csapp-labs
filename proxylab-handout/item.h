@@ -2,7 +2,7 @@
 #define __SET_ITEM_H__
 
 #include <sys/types.h>
-#define MAX_LEN 200
+#define MAX_LEN 8192
 
 typedef char* Key;
 

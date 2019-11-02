@@ -55,11 +55,6 @@ void STinsert(Item item)
 	head = insertR(head, item);
 }
 
-// DEBUG
-void test_item(Item item) {
-    printf("%s\n", item.name);
-}
-
 STlink rotR(STlink h)
 {
 	STlink x = h->l; 

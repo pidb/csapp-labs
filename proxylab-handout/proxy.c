@@ -6,8 +6,6 @@
 // gdb -ex 'b cache.c:75' --args ./proxy 9000
 
 /* Recommended max cache and object sizes */
-#define MAX_CACHE_SIZE 1049000
-#define MAX_OBJECT_SIZE 102400
 #define DEFAULT_PORT "80"
 
 /* You won't lose style points for including this long line in your code */
@@ -30,8 +28,17 @@ typedef struct thread_args {
     Cache *cachep;
 } Thargs;
 
+volatile int sigpipe_count = 0;
+
+void sigpipe_handler(int sig) {
+    sigpipe_count += 1;
+}
+
 int main(int argc, char **argv)
 {
+    /* Catch SIGPIPE signals. */
+    Signal(SIGPIPE,  sigpipe_handler);
+
     printf("%s\n", user_agent_hdr);
 
     int listenfd;
@@ -50,17 +57,17 @@ int main(int argc, char **argv)
        exit(1);
     }
 
-    listenfd = Open_listenfd(argv[1]);
+    listenfd = open_listenfd(argv[1]);
     while (1) {
         clientlen = sizeof(clientaddr);
         
-        connfdp = Malloc(sizeof(int));    
-        *connfdp = Accept(listenfd, (SA *)&clientaddr, &clientlen);
+        connfdp = malloc(sizeof(int));    
+        *connfdp = accept(listenfd, (SA *)&clientaddr, &clientlen);
 
         // DEBUG
         printf("Made a connection with fd %d\n", *connfdp);
 
-        Getnameinfo((SA *) &clientaddr, clientlen, hostname, MAXLINE, 
+        getnameinfo((SA *) &clientaddr, clientlen, hostname, MAXLINE, 
             port, MAXLINE, 0);
 
         printf("Accepted connection from (%s, %s)\n", hostname, port);
@@ -68,7 +75,9 @@ int main(int argc, char **argv)
         vargp = Malloc(sizeof(Thargs));
         vargp->fd = *connfdp;
         vargp->cachep = cachep;
-        Pthread_create(&tid, NULL, thread_handle_req, vargp);
+        pthread_create(&tid, NULL, thread_handle_req, vargp);
+
+        printf("SIGPIPE count: %d\n", sigpipe_count);
     }
 }
 
@@ -94,16 +103,18 @@ void *thread_handle_req(void *vargp)
     rio_t rio;
 
     /* Read request line and headers */
-    Rio_readinitb(&rio, fd);
-    if (!Rio_readlineb(&rio, buf, MAXLINE))
-        return;
+    rio_readinitb(&rio, fd);
+    if (!Rio_readlineb(&rio, buf, MAXLINE)) {
+        return NULL;
+    }
     
     // DEBUG
     printf("buff: %s len = %d \n", buf, strlen(buf));
 
+    /* The proxy works only with GET requests. */
     sscanf(buf, "%s %s %s", method, uri, version);       
     if (strcasecmp(method, "GET")) {
-        return;
+        return NULL;
     }
     read_requesthdrs(&rio);
 
@@ -113,7 +124,7 @@ void *thread_handle_req(void *vargp)
 
     int clientfd;
     if ((clientfd = open_clientfd(host, port)) < 0) {
-        return;
+        return NULL;
     }
     // DEBUG
     printf("clientfd %d\n", clientfd);
@@ -126,13 +137,15 @@ void *thread_handle_req(void *vargp)
     if (is_null(itm = cache_get_item(cachep, uri))) {
         char req[MAXLINE];
         build_request(req, host, query);
-        Rio_writen(clientfd, req, strlen(req));
+        
+        if (rio_writen(clientfd, req, strlen(req)) != strlen(req)) {
+            return NULL;
+        }
 
         rio_t response_rio;
-        Rio_readinitb(&response_rio, clientfd);
-        
+        rio_readinitb(&response_rio, clientfd);
         if ((n = rio_readn(clientfd, response_buf, MAX_OBJECT_SIZE)) < 0) {
-            unix_error("Rio_readlineb error");
+            return NULL;
         }
 
         cache_writer(cachep, response_buf, uri, n);
@@ -143,12 +156,14 @@ void *thread_handle_req(void *vargp)
     }
     
     Close(clientfd);
-    
+        
     // DEBUG
-    //printf("Response: %s\n", response_buf);
     printf("Response length: %d\n", n);
-
-    Rio_writen(fd, response_buf, n);
+    //printf("Response: %s\n", response_buf);
+    
+    if (rio_writen(fd, response_buf, n) != n) {
+        return NULL;
+    }
 
     Close(fd);
     return NULL;
@@ -161,11 +176,11 @@ void read_requesthdrs(rio_t *rp)
 {
     char buf[MAXLINE];
 
-    Rio_readlineb(rp, buf, MAXLINE);
-    printf("%s", buf);
+    rio_readlineb(rp, buf, MAXLINE);
+    //printf("%s", buf);
     while(strcmp(buf, "\r\n")) {
-       Rio_readlineb(rp, buf, MAXLINE);
-       printf("%s", buf);
+       rio_readlineb(rp, buf, MAXLINE);
+       //printf("%s", buf);
     }
     return;
 }

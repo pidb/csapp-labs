@@ -1,8 +1,11 @@
-#ifndef __CACHE_H__
-#define __CACHE_H__
+#ifndef __PROXY_CACHE_H__
+#define __PROXY_CACHE_H__
 
 #include "csapp.h"
 #include "set.h"
+
+#define MAX_CACHE_SIZE 1049000
+#define MAX_OBJECT_SIZE 102400
 
 /* Global variables */
 extern int readcnt; /* Initially = 0 */
