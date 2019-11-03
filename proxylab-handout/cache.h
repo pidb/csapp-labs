@@ -19,10 +19,10 @@ typedef struct {
 
 Cache *init_cache(void);
 
-void cache_reader(void);
+int cache_reader(Cache *cache, char *key, char *buf, int *size);
 void cache_writer(Cache *cachep, char *data, char *name, ssize_t size);
 
-Item cache_get_item(Cache *cache, Key key);
+Item cache_get_item(Cache *cache, char *key);
 void cache_store(Cache *cachep, char *data, char *name, ssize_t size);
 
 #endif

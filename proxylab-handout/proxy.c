@@ -37,7 +37,7 @@ void sigpipe_handler(int sig) {
 int main(int argc, char **argv)
 {
     /* Catch SIGPIPE signals. */
-    Signal(SIGPIPE,  sigpipe_handler);
+    Signal(SIGPIPE, sigpipe_handler);
 
     printf("%s\n", user_agent_hdr);
 
@@ -75,6 +75,7 @@ int main(int argc, char **argv)
         vargp = Malloc(sizeof(Thargs));
         vargp->fd = *connfdp;
         vargp->cachep = cachep;
+        
         pthread_create(&tid, NULL, thread_handle_req, vargp);
 
         printf("SIGPIPE count: %d\n", sigpipe_count);
@@ -122,6 +123,11 @@ void *thread_handle_req(void *vargp)
     char host[MAXLINE], port[MAXLINE], query[MAXLINE];
     parse_uri(uri, host, port, query);
 
+    /* Ignore URIs that are to long. */
+    if (strlen(uri) > MAX_LEN) {
+        return NULL;
+    }
+
     int clientfd;
     if ((clientfd = open_clientfd(host, port)) < 0) {
         return NULL;
@@ -132,9 +138,11 @@ void *thread_handle_req(void *vargp)
     ssize_t n;
     char response_buf[MAX_OBJECT_SIZE];
 
-    /* Check for the uri in the cache. */
-    Item itm;
-    if (is_null(itm = cache_get_item(cachep, uri))) {
+    /* Check for the uri in the cache and read data if found. */
+    int found_item = cache_reader(cachep, uri, response_buf, &n);
+
+    if (!found_item) {
+        printf("----------> Did not find item, %d \n", n);
         char req[MAXLINE];
         build_request(req, host, query);
         
@@ -152,14 +160,13 @@ void *thread_handle_req(void *vargp)
         // DEBUG
         printf("----------> cache tot size = %d\n", cachep->tot_size);
     } else {
-        // Use cache_reader.
+        printf("----------> found item \n");
     }
     
     Close(clientfd);
         
     // DEBUG
     printf("Response length: %d\n", n);
-    //printf("Response: %s\n", response_buf);
     
     if (rio_writen(fd, response_buf, n) != n) {
         return NULL;
@@ -177,10 +184,8 @@ void read_requesthdrs(rio_t *rp)
     char buf[MAXLINE];
 
     rio_readlineb(rp, buf, MAXLINE);
-    //printf("%s", buf);
     while(strcmp(buf, "\r\n")) {
        rio_readlineb(rp, buf, MAXLINE);
-       //printf("%s", buf);
     }
     return;
 }

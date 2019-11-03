@@ -24,15 +24,18 @@ int STcount() { return head->N; }
 Item searchR(STlink h, Key v)
 { 
 	Key t = key(h->item);
-	if (h == z) { return NULLitem; }
-	if (eq(v, t)) { return h->item; }
+	if (h == z)     { return NULLitem; }
+	if (eq(v, t))   { return h->item; }
+
 	if (less(v, t)) { return searchR(h->l, v); }
-	else 		  { return searchR(h->r, v); }
+	else 		    { return searchR(h->r, v); }
 }
 
 Item STsearch(Key v)
 { 
-	return searchR(head, v); 
+	printf("STsearch: %s\n", v.kval);
+	printf("head item name: %s\n", key(head->item));
+	return searchR(head, v);
 } 
 
 STlink insertR(STlink h, Item item)
