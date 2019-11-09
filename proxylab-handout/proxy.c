@@ -63,8 +63,6 @@ int main(int argc, char **argv)
         
         connfdp = malloc(sizeof(int));    
         *connfdp = accept(listenfd, (SA *)&clientaddr, &clientlen);
-
-        // DEBUG
         printf("Made a connection with fd %d\n", *connfdp);
 
         getnameinfo((SA *) &clientaddr, clientlen, hostname, MAXLINE, 
@@ -95,8 +93,6 @@ void *thread_handle_req(void *vargp)
     Pthread_detach(pthread_self());
     Free(vargp);
 
-    printf("file desc : %d\n", fd);
-
     int is_static;
     struct stat sbuf;
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
@@ -108,8 +104,6 @@ void *thread_handle_req(void *vargp)
     if (!Rio_readlineb(&rio, buf, MAXLINE)) {
         return NULL;
     }
-    
-    // DEBUG
     printf("buff: %s len = %d \n", buf, strlen(buf));
 
     /* The proxy works only with GET requests. */
@@ -132,7 +126,6 @@ void *thread_handle_req(void *vargp)
     if ((clientfd = open_clientfd(host, port)) < 0) {
         return NULL;
     }
-    // DEBUG
     printf("clientfd %d\n", clientfd);
 
     ssize_t n;
@@ -157,15 +150,12 @@ void *thread_handle_req(void *vargp)
         }
 
         cache_writer(cachep, response_buf, uri, n);
-        // DEBUG
         printf("----------> cache tot size = %d\n", cachep->tot_size);
     } else {
         printf("----------> found item \n");
     }
     
     Close(clientfd);
-        
-    // DEBUG
     printf("Response length: %d\n", n);
     
     if (rio_writen(fd, response_buf, n) != n) {

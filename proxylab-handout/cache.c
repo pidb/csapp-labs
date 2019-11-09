@@ -18,7 +18,6 @@ Cache *init_cache(void) {
     Sem_init(&mutex, 0, 1);
     Sem_init(&w, 0, 1);
 
-    //printf("readcnt = %d\n", readcnt);
     return cachep;
 }
 
@@ -68,9 +67,6 @@ Item cache_get_item(Cache *cache, char *key)
     Key u;
     memset(u.kval, 0, MAX_LEN);
     strncpy(u.kval ,key, strlen(key));
-
-    //printf("Searching item %s, %s, %d\n", u.kval, key, strlen(key));
-
     return STsearch(u);
 }
 
@@ -78,10 +74,8 @@ void cache_store(Cache *cachep, char *data, char *name, ssize_t size)
 {
     if ((cachep->tot_size + size) > MAX_CACHE_SIZE) {
         // TODO: LRU eviction policy.
-        //printf("Reached max size !\n");
         return;
     }
-    //printf("----------> cached uri = %s, %d\n", name, strlen(name));
 
     Item item;
     
@@ -89,9 +83,6 @@ void cache_store(Cache *cachep, char *data, char *name, ssize_t size)
     item.size = size;
     item.data = (char *)Malloc(size);
     memcpy(item.data, data, size);
-
-    // printf("coppied data, %d bytes \n", size);
-    // printf("struct size, %d \n", sizeof(Item));
 
     STinsert(item);
 
